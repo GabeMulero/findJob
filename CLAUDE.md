@@ -41,14 +41,31 @@ tracking job applications and recruiter follow-ups.
   Kubernetes deferred to a possible phase 2 — see `docs/architecture.md` §4)
 - **Database:** Azure Database for PostgreSQL Flexible Server, Burstable tier, private endpoint
   only, no public access
-- **Terraform state:** dedicated storage account (`TFS` in the architecture diagram), blob
-  container set to **Private**. Public network access is intentionally left open — GitHub-hosted
-  runners have no stable IP to restrict on — access is meant to be governed entirely by
-  Entra ID/RBAC. **Not yet confirmed: shared-key access disabled on the storage account.** Until
-  that's off, RBAC isn't actually the only door in — verify/set this before relying on it.
+- **Terraform state:** storage account `jobsearchstorageaccount` in resource group
+  `jobsearch-infrastructure`, container `terraform`, blob container **Private**. Public network
+  access left open on purpose (GitHub-hosted runners have no stable IP); **shared-key access is
+  disabled** — Entra ID/RBAC is genuinely the only door in, for both CI and local runs.
+- **App infrastructure resource group:** `jobsearch-app` (southcentralus) — separate from the
+  bootstrap RG above, on purpose, so Terraform never needs access to the account holding its own
+  state. Terraform-managed (imported after hand-creation, same bootstrap pattern as the state
+  storage account).
 - **CI/CD identity:** App Registration, OIDC-federated with GitHub Actions — no stored Azure
-  credentials in GitHub. Federated Identity Credential scoped to the GitHub Environment
-  `FindJobEnvironment` on `GabeMulero/findJob`.
+  credentials in GitHub. **Two Federated Identity Credentials**, not one — see below for why.
+- **RBAC:** the CI/CD Service Principal has `Storage Blob Data Contributor` on the state storage
+  account and `Contributor` on `jobsearch-app`. The signed-in local user (`az login`) has the
+  identical pair — local `terraform` runs need Entra ID access too, now that shared keys are off.
+- **CI/CD pipeline:** `.github/workflows/terraform.yml`, two jobs. `plan` runs unrestricted on
+  every push to `main` touching `terraform/**`. `apply` depends on `plan`, references
+  `environment: FindJobEnvironment`, and applies the exact plan `plan` produced (not a fresh one)
+  — so what gets approved is what gets applied. `FindJobEnvironment` has a required-reviewer
+  protection rule (reviewer: me) — every `apply` run pauses for manual approval before it does
+  anything.
+- **Why two FICs:** the first FIC was scoped to the GitHub Environment subject
+  (`environment:FindJobEnvironment`) — correct for `apply`, but `plan` doesn't reference an
+  environment, so its OIDC token carries a branch-scoped subject instead
+  (`ref:refs/heads/main`) and got rejected by Entra ID (`AADSTS700213`, discovered via a real
+  failed run). Fixed by adding a second FIC (`github-plan-main-branch`) scoped to the branch
+  subject specifically. Both live on the same App Registration.
 
 **Key identifiers** (plain IDs, not secrets — safe to reference directly):
 
@@ -61,16 +78,19 @@ tracking job applications and recruiter follow-ups.
 | Service Principal Object ID | `57e2f3a3-e2b7-4216-a41b-ee3e7e83f93d` |
 | GitHub repo | `GabeMulero/findJob` |
 | GitHub Environment | `FindJobEnvironment` |
+| Bootstrap resource group (state only) | `jobsearch-infrastructure` |
+| App resource group (Terraform-managed) | `jobsearch-app` |
 
 **Still open:**
 
-- RBAC role assignment on the Service Principal above — no scope or role picked yet. Needs a
-  decision (Contributor on the resource group vs. something narrower) before Terraform can
-  actually run via CI.
-- Protection rules on `FindJobEnvironment` (required reviewers) — not configured; currently
-  nothing gates a run against that environment.
-- Disable shared-key access on the TF state storage account (see above).
-- Terraform file/module structure itself — nothing written yet.
+- The actual application infrastructure — VNet, Postgres Flexible Server, Key Vault, Container
+  Registry, the Container Apps Job, Log Analytics. Only the resource group skeleton exists so far;
+  `terraform plan` currently reports no changes because there's nothing else defined yet.
+- A real `apply` run is sitting in GitHub Actions right now waiting on the required-reviewer
+  approval (triggered manually to verify the pipeline works end to end — see run history on
+  `GabeMulero/findJob`). Nothing to approve *of substance* yet (the plan is empty), but the gate
+  itself is proven live.
+- Database schema for the job-applications tracker — not designed yet.
 
 **Constraints to hold to regardless of mode:**
 
