@@ -1,0 +1,16 @@
+# Terraform local working files — provider binaries and backend cache, not
+# meant for version control. .terraform.lock.hcl (provider version pins) IS
+# committed — do not add it here.
+**/.terraform/
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+
+# Never commit real variable values with secrets, if any local override files
+# get created later.
+*.tfvars
+*.tfvars.json
+!example.tfvars
+
+.DS_Store
