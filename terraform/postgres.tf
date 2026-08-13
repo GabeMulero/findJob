@@ -49,11 +49,23 @@ resource "azurerm_postgresql_flexible_server" "main" {
 # Postgres role separately, once that identity exists (next phase);
 # Terraform/ARM has no native resource for that step — it's a SQL-level
 # grant, run once against the server itself.
+#
+# principal_name is truncated to 63 chars, not a typo. This API silently
+# truncates on ingest rather than validating length up front — the full UPN
+# (longer than 63 chars due to the #EXT# guest-account encoding) caused a
+# generic, unhelpful "InternalServerError" via Terraform on two consecutive
+# real attempts. Diagnosed by running the equivalent `az` CLI command
+# directly, which succeeded and revealed the actual stored (truncated)
+# value. This field is cosmetic display text only — object_id/tenant_id are
+# what actually govern authentication, so the truncation has no functional
+# effect. Resource was created via CLI and imported into state; matching
+# the config to reality here so Terraform doesn't try to "fix" it back to
+# the string that breaks.
 resource "azurerm_postgresql_flexible_server_active_directory_administrator" "me" {
   server_name         = azurerm_postgresql_flexible_server.main.name
   resource_group_name = azurerm_resource_group.app.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
   object_id           = data.azurerm_client_config.current.object_id
-  principal_name      = "gabrielalexandermulero_gmail.com#EXT#@gabrielalexandermulerogm265.onmicrosoft.com"
+  principal_name      = "gabrielalexandermulero_gmail.com#EXT#@gabrielalexandermulerogm2"
   principal_type      = "User"
 }
