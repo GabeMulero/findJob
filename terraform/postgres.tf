@@ -26,6 +26,9 @@ resource "azurerm_postgresql_flexible_server" "main" {
   delegated_subnet_id           = azurerm_subnet.data.id
   private_dns_zone_id           = azurerm_private_dns_zone.postgres.id
   public_network_access_enabled = false
+  # Azure auto-assigned this zone at creation; pinned explicitly to match
+  # reality rather than have Terraform null it out on every plan.
+  zone = "2"
 
   # Burstable, smallest SKU — cheapest tier, correct trade-off for a
   # personal job-application tracker with no sustained load.

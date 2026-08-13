@@ -15,7 +15,7 @@ resource "azurerm_subnet" "app" {
   name                 = "snet-app"
   resource_group_name  = azurerm_resource_group.app.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.1.0/23"]
+  address_prefixes     = ["10.0.0.0/23"]
 
   delegation {
     name = "container-apps-delegation"
@@ -31,6 +31,13 @@ resource "azurerm_subnet" "data" {
   resource_group_name  = azurerm_resource_group.app.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
+
+  # Azure auto-provisioned this alongside the Postgres server for its
+  # backup mechanism's network path to Microsoft-managed storage. Declared
+  # explicitly so Terraform stops trying to remove it as drift.
+  service_endpoint {
+    service = "Microsoft.Storage"
+  }
 
   delegation {
     name = "postgres-delegation"
