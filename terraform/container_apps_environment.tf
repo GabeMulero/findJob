@@ -13,4 +13,5 @@ resource "azurerm_container_app_environment" "main" {
   location                   = azurerm_resource_group.app.location
   infrastructure_subnet_id   = azurerm_subnet.app.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  logs_destination           = "log-analytics"
 }
