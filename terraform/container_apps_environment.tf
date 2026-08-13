@@ -14,4 +14,15 @@ resource "azurerm_container_app_environment" "main" {
   infrastructure_subnet_id   = azurerm_subnet.app.id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   logs_destination           = "log-analytics"
+
+  # Azure attaches this by default on creation - Consumption is the
+  # serverless, pay-per-use profile, exactly what a personal project with
+  # no sustained load wants. Declared explicitly so Terraform stops trying
+  # to strip it as drift.
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+    minimum_count         = 0
+    maximum_count         = 0
+  }
 }

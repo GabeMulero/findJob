@@ -50,22 +50,25 @@ resource "azurerm_postgresql_flexible_server" "main" {
 # Terraform/ARM has no native resource for that step — it's a SQL-level
 # grant, run once against the server itself.
 #
-# principal_name is truncated to 63 chars, not a typo. This API silently
-# truncates on ingest rather than validating length up front — the full UPN
-# (longer than 63 chars due to the #EXT# guest-account encoding) caused a
-# generic, unhelpful "InternalServerError" via Terraform on two consecutive
-# real attempts. Diagnosed by running the equivalent `az` CLI command
-# directly, which succeeded and revealed the actual stored (truncated)
-# value. This field is cosmetic display text only — object_id/tenant_id are
-# what actually govern authentication, so the truncation has no functional
-# effect. Resource was created via CLI and imported into state; matching
-# the config to reality here so Terraform doesn't try to "fix" it back to
-# the string that breaks.
+# principal_name is truncated to 63 chars, not a typo — this API silently
+# truncates on ingest rather than validating length, and the full UPN
+# (longer than 63 chars from the #EXT# guest-account encoding) exceeded it.
+# Cosmetic only: object_id/tenant_id govern authentication, not this field.
+#
+# This resource cannot currently be created THROUGH TERRAFORM in this
+# environment — confirmed 4/4 failures via `terraform apply`, all the
+# identical generic "InternalServerError" from the ARM API, including
+# after fixing the truncation. The equivalent `az` CLI call has succeeded
+# 2/2 times. This isn't a config problem; it's the provider's
+# implementation of this resource against this API. Created via CLI both
+# times and imported into state. If this resource is ever destroyed and
+# needs recreating: use the CLI, then `terraform import` — do not expect
+# `terraform apply` to create it successfully.
 resource "azurerm_postgresql_flexible_server_active_directory_administrator" "me" {
   server_name         = azurerm_postgresql_flexible_server.main.name
   resource_group_name = azurerm_resource_group.app.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
-  object_id           = data.azurerm_client_config.current.object_id
+  object_id           = local.my_object_id
   principal_name      = "gabrielalexandermulero_gmail.com#EXT#@gabrielalexandermulerogm2"
   principal_type      = "User"
 }
