@@ -83,13 +83,17 @@ tracking job applications and recruiter follow-ups.
 
 **Still open:**
 
-- The actual application infrastructure — VNet, Postgres Flexible Server, Key Vault, Container
-  Registry, the Container Apps Job, Log Analytics. Only the resource group skeleton exists so far;
-  `terraform plan` currently reports no changes because there's nothing else defined yet.
-- A real `apply` run is sitting in GitHub Actions right now waiting on the required-reviewer
-  approval (triggered manually to verify the pipeline works end to end — see run history on
-  `GabeMulero/findJob`). Nothing to approve *of substance* yet (the plan is empty), but the gate
-  itself is proven live.
+- **Networking + Postgres are written and pushed** (`terraform/network.tf`, `terraform/postgres.tf`)
+  — VNet, snet-app/snet-data, Postgres Flexible Server (Burstable B1ms, VNet-integrated, no public
+  endpoint, Entra ID-only auth — no password anywhere). Plan validated clean locally (7 to add, 0
+  to change/destroy) before pushing.
+- **A real `apply` run is sitting in GitHub Actions waiting on required-reviewer approval right
+  now** — this one has substance (creates the VNet + Postgres server, real cost starts here). See
+  run history on `GabeMulero/findJob`. The earlier empty-plan verification run was canceled as
+  stale, not left dangling.
+- Still not built: Key Vault, Container Registry, the Container Apps Job itself, Log Analytics.
+- The application's own runtime identity (separate from the CI/CD App Registration) doesn't exist
+  yet — needed before it can be granted a non-admin Postgres role or Key Vault access.
 - Database schema for the job-applications tracker — not designed yet.
 
 **Constraints to hold to regardless of mode:**
