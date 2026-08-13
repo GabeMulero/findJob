@@ -12,8 +12,8 @@ terraform {
   backend "azurerm" {
     resource_group_name  = "jobsearch-infrastructure"
     storage_account_name = "jobsearchstorageaccount"
-    container_name        = "terraform"
-    key                   = "findjob.tfstate"
-    use_azuread_auth      = true
+    container_name       = "terraform"
+    key                  = "findjob.tfstate"
+    use_azuread_auth     = true
   }
 }
