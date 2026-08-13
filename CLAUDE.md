@@ -52,8 +52,11 @@ tracking job applications and recruiter follow-ups.
 - **CI/CD identity:** App Registration, OIDC-federated with GitHub Actions — no stored Azure
   credentials in GitHub. **Two Federated Identity Credentials**, not one — see below for why.
 - **RBAC:** the CI/CD Service Principal has `Storage Blob Data Contributor` on the state storage
-  account and `Contributor` on `jobsearch-app`. The signed-in local user (`az login`) has the
-  identical pair — local `terraform` runs need Entra ID access too, now that shared keys are off.
+  account, plus `Contributor` **and** `User Access Administrator` on `jobsearch-app` — Contributor
+  alone can't create role assignments (`Microsoft.Authorization/roleAssignments/write` is
+  deliberately excluded from it), and this config has Terraform creating several. The signed-in
+  local user (`az login`) has the identical set — local `terraform` runs need Entra ID access too,
+  now that shared keys are off.
 - **CI/CD pipeline:** `.github/workflows/terraform.yml`, two jobs. `plan` runs unrestricted on
   every push to `main` touching `terraform/**`. `apply` depends on `plan`, references
   `environment: FindJobEnvironment`, and applies the exact plan `plan` produced (not a fresh one)
@@ -81,19 +84,34 @@ tracking job applications and recruiter follow-ups.
 | Bootstrap resource group (state only) | `jobsearch-infrastructure` |
 | App resource group (Terraform-managed) | `jobsearch-app` |
 
+**Live in Azure right now, fully Terraform-managed, zero drift (17 resources incl. 1 data
+source):** VNet + snet-app/snet-data, Postgres Flexible Server (Burstable B1ms, VNet-integrated,
+no public endpoint, Entra ID-only auth), the Postgres AAD administrator, Key Vault (RBAC-authorized,
+public access + RBAC — same reasoning as the state storage account), Container Registry, the
+`id-jobsearch-runtime` managed identity (AcrPull + Key Vault Secrets User), Log Analytics
+workspace, and the Container Apps environment (VNet-integrated via snet-app).
+
+**One resource this provider cannot reliably create via `terraform apply` in this environment:**
+`azurerm_postgresql_flexible_server_active_directory_administrator` — failed identically 4/4 times
+through Terraform (generic `InternalServerError`, including after fixing an unrelated truncation
+bug), succeeded 2/2 times via the equivalent `az` CLI call. Documented in `postgres.tf`: if it's
+ever destroyed, recreate via CLI + `terraform import`, don't expect `apply` to do it.
+
+**A real, recurring bug pattern worth remembering:** `data.azurerm_client_config.current.object_id`
+reflects *whoever is currently running Terraform* — me locally, the CI Service Principal in
+pipeline runs. Using it for "grant me access" resources is wrong and was actually caught live (a
+role assignment meant for me had silently gone to the CI identity instead, after CI applied it).
+Fixed with `local.my_object_id` in `terraform/locals.tf` — a genuinely fixed value, not a dynamic
+one. `tenant_id` references to the same data source are fine; only identity varies by caller.
+
 **Still open:**
 
-- **Networking + Postgres are written and pushed** (`terraform/network.tf`, `terraform/postgres.tf`)
-  — VNet, snet-app/snet-data, Postgres Flexible Server (Burstable B1ms, VNet-integrated, no public
-  endpoint, Entra ID-only auth — no password anywhere). Plan validated clean locally (7 to add, 0
-  to change/destroy) before pushing.
-- **A real `apply` run is sitting in GitHub Actions waiting on required-reviewer approval right
-  now** — this one has substance (creates the VNet + Postgres server, real cost starts here). See
-  run history on `GabeMulero/findJob`. The earlier empty-plan verification run was canceled as
-  stale, not left dangling.
-- Still not built: Key Vault, Container Registry, the Container Apps Job itself, Log Analytics.
-- The application's own runtime identity (separate from the CI/CD App Registration) doesn't exist
-  yet — needed before it can be granted a non-admin Postgres role or Key Vault access.
+- The Container Apps Job itself — cron schedule, container image, the actual compute. No
+  application code or image exists yet to reference; that's the next real piece of work.
+- The runtime identity (`id-jobsearch-runtime`) doesn't have a non-admin Postgres role yet — that's
+  a SQL-level grant, not an ARM/Terraform resource, and Postgres has no public endpoint to reach
+  from my laptop to run it. Likely solved once the Container Apps Job exists and can run it from
+  inside the VNet.
 - Database schema for the job-applications tracker — not designed yet.
 
 **Constraints to hold to regardless of mode:**
